@@ -38,8 +38,8 @@ first run. Edit that file to change thresholds, then re-run `sudo ./install.sh`.
 | `CHARGE_LOW` | `40` | Shut down when battery charge is at or below this percent while on battery |
 | `RUNTIME_LOW` | `180` | ...or when estimated runtime is at or below this many seconds |
 | `ONBATT_SHUTDOWN_SECS` | `300` | Backstop: shut down after this many consecutive seconds on battery |
-| `OFFDELAY` | `20` | Seconds after the halt command until the UPS cuts its outlets |
-| `ONDELAY` | `60` | Seconds until outlets come back if utility power is present (must exceed `OFFDELAY`) |
+| `OFFDELAY` | `60` | Seconds after the halt command until the UPS cuts its outlets (CyberPower rounds down to multiples of 60, so use 60, 120, ...) |
+| `ONDELAY` | `120` | Seconds until outlets come back if utility power is present (must exceed `OFFDELAY`, same rounding) |
 | `HEARTBEAT_MIN` | `15` | Minutes between status.log heartbeat lines while everything is normal |
 
 Pick `CHARGE_LOW`/`RUNTIME_LOW` so that the OS has time to halt with margin
@@ -149,6 +149,23 @@ by the flag, so do not pull the plug expecting nothing to happen.
 5. Restore `ONBATT_SHUTDOWN_SECS`, re-run `sudo ./install.sh`, and review the
    logs listed above.
 
+## Before relying on it: prove the UPS actually holds the load
+
+NUT can only act on what the UPS reports. If the battery is dead, disconnected
+or worn out, the UPS drops the load the instant utility power fails, no
+on-battery event is ever generated, and nothing in this repo can help. Check
+this first, and again every year or so:
+
+1. Plug a lamp (not the computer) into a **battery-backed** outlet.
+2. Pull the UPS's utility plug. The lamp must stay lit and the UPS must show
+   "on battery" on its display.
+3. If the lamp goes out or the UPS itself turns off: check that the internal
+   battery connector is attached (CyberPower ships some models with it
+   unplugged), then replace the battery if the problem persists.
+
+A UPS with a bad battery often still reports `battery.charge: 100` and a
+plausible `battery.runtime`, because those are estimates, not measurements.
+
 ## Troubleshooting
 
 - **Driver logs "insufficient permissions" / "No matching HID UPS found"**:
@@ -164,6 +181,9 @@ by the flag, so do not pull the plug expecting nothing to happen.
   (it is removed on the next boot, so look in the previous boot's journal:
   `journalctl -b -1 -u nut-monitor`), and that `upscmd -l cyberpower` lists
   `shutdown.return`.
+- **Rig died instantly when the plug was pulled, UPS turned off too**: the
+  battery did not take the load. See "Before relying on it" above. Nothing in
+  the logs is expected in this case.
 - **Machine did not power on when utility returned**: confirm BIOS
   *AC BACK = Always On*, and that the machine is on a battery-backed outlet.
 - **Stale `/etc/killpower` after a normal boot**: `sudo rm /etc/killpower`.

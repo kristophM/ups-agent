@@ -24,6 +24,8 @@ log() {
     line="$(date '+%Y-%m-%d %H:%M:%S %z') [$level] $*"
     echo "$line" >> "$LOG" 2>/dev/null
     logger -t ups-agent -p "daemon.$level" -- "$*"
+    # Power may vanish at any moment during an outage: push the log to disk now.
+    sync -f "$LOG" 2>/dev/null || sync
 }
 
 case "$event" in

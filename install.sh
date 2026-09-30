@@ -41,7 +41,7 @@ fi
 . "$ENV_FILE"
 : "${UPS_NAME:=cyberpower}" "${UPS_DESC:=CyberPower UPS}"
 : "${CHARGE_LOW:=40}" "${RUNTIME_LOW:=180}" "${ONBATT_SHUTDOWN_SECS:=300}"
-: "${OFFDELAY:=20}" "${ONDELAY:=60}" "${HEARTBEAT_MIN:=15}"
+: "${OFFDELAY:=60}" "${ONDELAY:=120}" "${HEARTBEAT_MIN:=15}"
 
 [[ $UPS_NAME =~ ^[A-Za-z0-9_-]+$ ]] || { warn "UPS_NAME '$UPS_NAME' has invalid characters"; exit 1; }
 for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY ONDELAY HEARTBEAT_MIN; do
@@ -49,6 +49,9 @@ for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY ONDELAY HEARTBEAT_
 done
 if [ "$ONDELAY" -le "$OFFDELAY" ]; then
     warn "ONDELAY ($ONDELAY) must be greater than OFFDELAY ($OFFDELAY)"; exit 1
+fi
+if [ $((OFFDELAY % 60)) -ne 0 ] || [ $((ONDELAY % 60)) -ne 0 ] || [ "$OFFDELAY" -lt 60 ]; then
+    warn "CyberPower rounds delays DOWN to multiples of 60 s; OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY may become 0 (no delay)"
 fi
 ok "UPS_NAME=$UPS_NAME CHARGE_LOW=${CHARGE_LOW}% RUNTIME_LOW=${RUNTIME_LOW}s ONBATT_SHUTDOWN_SECS=$ONBATT_SHUTDOWN_SECS OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY"
 

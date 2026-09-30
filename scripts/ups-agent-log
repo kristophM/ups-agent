@@ -27,5 +27,6 @@ fields=$(echo "$data" \
 
 if [ "$status" != "OL" ] || [ $(( minute % HEARTBEAT_MIN )) -eq 0 ]; then
     echo "$now status=\"$status\" $fields" >> "$LOG"
+    [ "$status" != "OL" ] && { sync -f "$LOG" 2>/dev/null || sync; }
 fi
 exit 0
