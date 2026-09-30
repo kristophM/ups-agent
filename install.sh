@@ -158,12 +158,9 @@ install -m 0644 "$REPO_DIR/etc/logrotate.d/ups-agent" /etc/logrotate.d/ups-agent
 install -m 0644 "$REPO_DIR/systemd/ups-agent-log.service" /etc/systemd/system/ups-agent-log.service
 install -m 0644 "$REPO_DIR/systemd/ups-agent-log.timer" /etc/systemd/system/ups-agent-log.timer
 
-# upssched needs a writable place for its pipe/lock; Debian ships /run/nut as
-# root:nut 0770 via tmpfiles, but make sure it exists right now too.
-cat > /usr/lib/tmpfiles.d/ups-agent.conf <<'TMPF'
-d /run/nut 0770 root nut -
-TMPF
-systemd-tmpfiles --create /usr/lib/tmpfiles.d/ups-agent.conf
+# upssched's pipe/lock live in /run/nut/upssched, created by NUT's own
+# tmpfiles rule (nut-common-tmpfiles.conf) and by the unit's ExecStartPre.
+rm -f /usr/lib/tmpfiles.d/ups-agent.conf
 ok "scripts in $LIB_DIR, logs in $LOG_DIR"
 
 # ---------------------------------------------------------------- 6. services

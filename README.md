@@ -14,7 +14,8 @@ This repo is the installer: clone it on the target machine and run
 ## Requirements
 
 - Ubuntu (tested on 26.04 LTS, NUT 2.8.4); Debian should also work.
-- CyberPower UPS connected by USB (`lsusb` shows vendor `0764`).
+- CyberPower UPS connected by USB (`lsusb` shows vendor `0764`). Tested
+  with a CP1000AVRLCDa; any model handled by NUT's `usbhid-ups` should work.
 - BIOS set to power on when AC returns (Gigabyte: *AC BACK = Always On*).
   Without this the UPS will restore power but the machine will stay off.
 - The machine is plugged into a **battery-backed** outlet of the UPS.
