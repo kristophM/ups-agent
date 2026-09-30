@@ -150,6 +150,10 @@ by the flag, so do not pull the plug expecting nothing to happen.
 
 ## Troubleshooting
 
+- **Driver logs "insufficient permissions" / "No matching HID UPS found"**:
+  the UPS device node is not owned by group `nut`. `install.sh` re-triggers
+  udev for the UPS, but a replug also fixes it. Check with
+  `ls -l /dev/bus/usb/*/*` against `lsusb | grep 0764`.
 - **`upsc` says "Data stale" or the driver won't start**: check
   `journalctl -u nut-driver@cyberpower`. Unplug and replug the UPS USB cable.
   CyberPower units occasionally drop off USB; `pollfreq`/`pollinterval` are

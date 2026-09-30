@@ -64,6 +64,25 @@ else
 fi
 getent group nut >/dev/null || { warn "group 'nut' missing after install"; exit 1; }
 
+# nut-server ships udev rules that hand USB UPS devices to group "nut", but
+# they only apply to devices plugged in after the rules exist. Re-apply them
+# to the already-connected UPS so the driver can open it without a replug.
+log "Applying NUT udev rules to the connected UPS"
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=usb --attr-match=idVendor=0764 --action=add 2>/dev/null || udevadm trigger --subsystem-match=usb
+udevadm settle --timeout=10 || true
+ups_dev=""
+for d in /dev/bus/usb/*/*; do
+    if udevadm info -q property "$d" 2>/dev/null | grep -q '^ID_VENDOR_ID=0764$'; then ups_dev=$d; break; fi
+done
+if [ -z "$ups_dev" ]; then
+    warn "no CyberPower (vendor 0764) USB device found — is the UPS USB cable connected?"
+elif [ "$(stat -c %G "$ups_dev")" = "nut" ]; then
+    ok "$ups_dev owned by group nut ($(stat -c '%U:%G %a' "$ups_dev"))"
+else
+    warn "$ups_dev is $(stat -c '%U:%G %a' "$ups_dev"), not group nut — driver will fail to open it"
+fi
+
 # ---------------------------------------------------------------- 3. password
 # Keep an existing upsmon password across re-runs so nothing needs restarting
 # for auth reasons; generate one on first install.
@@ -150,28 +169,34 @@ ok "scripts in $LIB_DIR, logs in $LOG_DIR"
 # ---------------------------------------------------------------- 6. services
 log "Enabling and (re)starting services"
 systemctl daemon-reload
+# Fresh installs leave nut-server "failed" (it ran before ups.conf existed)
+# and often start-rate-limited; clear that or restarts are refused.
+systemctl reset-failed "nut-driver@$UPS_NAME.service" nut-server.service nut-monitor.service 2>/dev/null || true
+
+svc_fail=0
+restart_unit() {
+    if systemctl restart "$1"; then ok "$1 restarted"; else warn "$1 failed to start — see: journalctl -u $1"; svc_fail=1; fi
+}
 
 # Debian/Ubuntu NUT 2.8 generates one nut-driver@<ups>.service per ups.conf
 # section via nut-driver-enumerator. Fall back to the classic upsdrvctl path
 # if this box's packaging lacks it.
 if systemctl cat nut-driver-enumerator.service >/dev/null 2>&1; then
-    systemctl enable nut-driver-enumerator.service >/dev/null 2>&1 || true
+    systemctl enable nut-driver-enumerator.service nut-driver-enumerator.path >/dev/null 2>&1 || true
     systemctl restart nut-driver-enumerator.service || warn "nut-driver-enumerator restart failed"
     systemctl enable "nut-driver@$UPS_NAME.service" >/dev/null 2>&1 || true
-    systemctl restart "nut-driver@$UPS_NAME.service" || warn "nut-driver@$UPS_NAME restart failed"
-    ok "driver unit: nut-driver@$UPS_NAME.service"
+    restart_unit "nut-driver@$UPS_NAME.service"
 else
     upsdrvctl stop >/dev/null 2>&1 || true
-    upsdrvctl start
-    ok "driver started via upsdrvctl"
+    upsdrvctl start && ok "driver started via upsdrvctl" || { warn "upsdrvctl start failed"; svc_fail=1; }
 fi
 
 systemctl enable nut-server.service nut-monitor.service >/dev/null 2>&1 || true
-systemctl restart nut-server.service
 sleep 2
-systemctl restart nut-monitor.service
-systemctl enable --now ups-agent-log.timer >/dev/null
-ok "nut-server, nut-monitor, ups-agent-log.timer enabled"
+restart_unit nut-server.service
+sleep 2
+restart_unit nut-monitor.service
+systemctl enable --now ups-agent-log.timer >/dev/null && ok "ups-agent-log.timer enabled"
 
 # ---------------------------------------------------------------- 7. summary
 log "Status"
@@ -195,5 +220,9 @@ else
 fi
 
 echo
+if [ $svc_fail -ne 0 ]; then
+    echo "Done WITH ERRORS: one or more services failed to start (see [!!] above)."
+    exit 1
+fi
 echo "Done. Run ./verify.sh (no sudo needed) for a fuller read-only check."
 echo "Logs: $LOG_DIR/events.log, $LOG_DIR/status.log, journalctl -t ups-agent -u nut-monitor"
