@@ -1,0 +1,31 @@
+#!/bin/bash
+# ups-agent periodic status logger. Run by ups-agent-log.timer every minute
+# as user "nut". Writes a line whenever the UPS is not simply "OL" (online),
+# plus a heartbeat every HEARTBEAT_MIN minutes, to /var/log/ups-agent/status.log.
+set -u
+CONF=/etc/ups-agent/ups-agent.conf
+[ -r "$CONF" ] && . "$CONF"
+UPS=${UPS:-cyberpower@localhost}
+LOG_DIR=${LOG_DIR:-/var/log/ups-agent}
+HEARTBEAT_MIN=${HEARTBEAT_MIN:-15}
+LOG="$LOG_DIR/status.log"
+
+data=$(upsc "$UPS" 2>&1)
+rc=$?
+now=$(date '+%Y-%m-%d %H:%M:%S %z')
+minute=$(( $(date +%s) / 60 ))
+
+if [ $rc -ne 0 ]; then
+    echo "$now status=UNREACHABLE error=\"$(echo "$data" | head -1)\"" >> "$LOG"
+    exit 0
+fi
+
+status=$(echo "$data" | sed -n 's/^ups\.status: //p')
+fields=$(echo "$data" \
+  | grep -E '^(battery\.charge|battery\.runtime|input\.voltage|output\.voltage|ups\.load|battery\.voltage|ups\.temperature):' \
+  | sed 's/: /=/' | tr '\n' ' ')
+
+if [ "$status" != "OL" ] || [ $(( minute % HEARTBEAT_MIN )) -eq 0 ]; then
+    echo "$now status=\"$status\" $fields" >> "$LOG"
+fi
+exit 0

@@ -1,0 +1,3 @@
+# ups-agent: lets the unprivileged upssched event handler (user "nut") ask
+# upsmon to run a forced shutdown when the on-battery timer expires.
+nut ALL=(root) NOPASSWD: /usr/sbin/upsmon -c fsd, /sbin/upsmon -c fsd

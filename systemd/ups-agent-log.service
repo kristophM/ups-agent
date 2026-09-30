@@ -1,0 +1,10 @@
+[Unit]
+Description=ups-agent: log UPS status snapshot
+After=nut-server.service
+Wants=nut-server.service
+
+[Service]
+Type=oneshot
+User=nut
+Group=nut
+ExecStart=/usr/local/lib/ups-agent/ups-agent-log

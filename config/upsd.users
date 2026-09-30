@@ -1,0 +1,4 @@
+# ups-agent: managed by install.sh — edits here are overwritten on reinstall.
+[upsmon]
+    password = @UPSMON_PASSWORD@
+    upsmon primary

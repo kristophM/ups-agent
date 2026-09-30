@@ -1,0 +1,10 @@
+/var/log/ups-agent/*.log {
+    weekly
+    rotate 12
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    create 0664 nut nut
+}

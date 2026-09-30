@@ -1,0 +1,71 @@
+#!/bin/bash
+# ups-agent event handler. Invoked by upssched (as user "nut") with one
+# argument: the event name from upssched.conf, or a timer name when it fires.
+set -u
+
+CONF=/etc/ups-agent/ups-agent.conf
+[ -r "$CONF" ] && . "$CONF"
+UPS=${UPS:-cyberpower@localhost}
+LOG_DIR=${LOG_DIR:-/var/log/ups-agent}
+LOG="$LOG_DIR/events.log"
+DRY_RUN_FLAG=/etc/ups-agent/dry-run
+
+event=${1:-unknown}
+
+snapshot() {
+    upsc "$UPS" 2>/dev/null \
+      | grep -E '^(ups\.status|battery\.charge|battery\.runtime|input\.voltage|ups\.load|battery\.voltage):' \
+      | sed 's/: /=/' | tr '\n' ' '
+}
+
+log() {
+    local level=$1; shift
+    local line
+    line="$(date '+%Y-%m-%d %H:%M:%S %z') [$level] $*"
+    echo "$line" >> "$LOG" 2>/dev/null
+    logger -t ups-agent -p "daemon.$level" -- "$*"
+}
+
+case "$event" in
+    onbatt)
+        log warning "ON BATTERY: utility power lost. $(snapshot)"
+        ;;
+    online)
+        log notice "ONLINE: utility power restored; shutdown timer cancelled. $(snapshot)"
+        ;;
+    lowbatt)
+        log crit "LOW BATTERY threshold reached; upsmon will shut the OS down now. $(snapshot)"
+        ;;
+    onbatt-shutdown)
+        if [ -e "$DRY_RUN_FLAG" ]; then
+            log crit "ON-BATTERY TIMER EXPIRED (dry-run flag present, NOT shutting down). $(snapshot)"
+        else
+            log crit "ON-BATTERY TIMER EXPIRED: forcing shutdown via upsmon -c fsd. $(snapshot)"
+            if ! sudo -n /usr/sbin/upsmon -c fsd; then
+                log err "upsmon -c fsd FAILED (check /etc/sudoers.d/ups-agent)"
+            fi
+        fi
+        ;;
+    fsd)
+        log crit "FSD: forced shutdown signalled. $(snapshot)"
+        ;;
+    shutdown)
+        log crit "SHUTDOWN: OS halting; UPS outlets will be cut after offdelay. $(snapshot)"
+        ;;
+    commbad|nocomm)
+        log err "$event: lost communication with UPS (USB?)."
+        ;;
+    commok)
+        log notice "COMMOK: communication with UPS established. $(snapshot)"
+        ;;
+    replbatt)
+        log warning "REPLBATT: UPS reports battery needs replacement."
+        ;;
+    noparent)
+        log err "NOPARENT: upsmon privileged parent died; automatic shutdown is NOT possible."
+        ;;
+    *)
+        log notice "event '$event'. $(snapshot)"
+        ;;
+esac
+exit 0
