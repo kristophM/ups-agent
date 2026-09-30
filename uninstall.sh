@@ -12,7 +12,7 @@ for u in $(systemctl list-units --all --plain --no-legend 'nut-driver@*' | awk '
 done
 rm -f /etc/systemd/system/ups-agent-log.service /etc/systemd/system/ups-agent-log.timer
 rm -f /etc/sudoers.d/ups-agent /etc/logrotate.d/ups-agent /usr/lib/tmpfiles.d/ups-agent.conf
-rm -rf /usr/local/lib/ups-agent /etc/ups-agent
+rm -rf /usr/local/lib/ups-agent /etc/ups-agent /usr/local/sbin/ups-selftest
 for f in nut.conf ups.conf upsd.conf upsd.users upsmon.conf upssched.conf; do
     if [ -f /etc/nut/$f ] && grep -q '^# ups-agent: managed' /etc/nut/$f; then
         rm -f /etc/nut/$f /etc/nut/$f.bak

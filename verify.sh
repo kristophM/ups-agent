@@ -19,7 +19,7 @@ systemctl is-enabled --quiet nut-monitor.service && ok "nut-monitor enabled at b
 
 echo "== UPS ($UPS)"
 if data=$(upsc "$UPS" 2>&1); then
-    echo "$data" | grep -E '^(device\.model|ups\.status|battery\.charge|battery\.charge\.low|battery\.runtime|battery\.runtime\.low|ups\.delay\.shutdown|ups\.delay\.start|ups\.load|input\.voltage|ups\.realpower\.nominal|battery\.mfr\.date):' | sed 's/^/     /'
+    echo "$data" | grep -E '^(device\.model|ups\.status|battery\.charge|battery\.charge\.low|battery\.runtime|battery\.runtime\.low|ups\.delay\.shutdown|ups\.delay\.start|ups\.load|input\.voltage|ups\.realpower\.nominal|battery\.mfr\.date|ups\.test\.result):' | sed 's/^/     /'
     status=$(echo "$data" | sed -n 's/^ups\.status: //p')
     case " $status " in *" OL "*) ok "on utility power";; *" OB "*) bad "currently ON BATTERY";; *) bad "unexpected status '$status'";; esac
     [ "$(echo "$data" | sed -n 's/^ups\.delay\.shutdown: //p')" != "" ] && ok "UPS accepted offdelay (ups.delay.shutdown)" || bad "ups.delay.shutdown not reported"

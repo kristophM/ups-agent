@@ -164,7 +164,21 @@ this first, and again every year or so:
    unplugged), then replace the battery if the problem persists.
 
 A UPS with a bad battery often still reports `battery.charge: 100` and a
-plausible `battery.runtime`, because those are estimates, not measurements.
+plausible `battery.runtime`, because those are estimates derived from the
+charger's float voltage, not measurements under load.
+
+The UPS can also load-test itself. `install.sh` sets up a NUT admin user and
+a wrapper for it:
+
+```sh
+sudo ups-selftest          # quick test, ~10 s on battery
+sudo ups-selftest --deep   # longer test
+```
+
+It prints `ups.test.result` as the UPS updates it and ends with PASSED or
+FAILED (which also raises the `RB` status flag). **The test puts the load on
+battery**, so a bad battery drops the outlets just like a real outage. Run it
+with only a lamp on the UPS, or accept that the machine may lose power.
 
 ## Troubleshooting
 
@@ -187,8 +201,9 @@ plausible `battery.runtime`, because those are estimates, not measurements.
 - **Machine did not power on when utility returned**: confirm BIOS
   *AC BACK = Always On*, and that the machine is on a battery-backed outlet.
 - **Stale `/etc/killpower` after a normal boot**: `sudo rm /etc/killpower`.
-- **Changing the upsmon password**: delete `/etc/nut/upsd.users` and re-run
-  `sudo ./install.sh`; a new one is generated and applied to both files.
+- **Changing the upsmon or admin password**: delete `/etc/nut/upsd.users` and
+  re-run `sudo ./install.sh`; new ones are generated and applied everywhere
+  (`upsmon.conf`, `/etc/ups-agent/admin.pass`).
 
 ## Uninstall
 
@@ -208,6 +223,7 @@ install.env.example   tunables; copied to /etc/ups-agent/install.env
 config/               NUT config templates -> /etc/nut/
 scripts/upssched-cmd  event handler -> /usr/local/lib/ups-agent/
 scripts/ups-agent-log minute status logger -> /usr/local/lib/ups-agent/
+scripts/ups-selftest  battery self-test wrapper -> /usr/local/sbin/ups-selftest
 systemd/              ups-agent-log.service + .timer
 etc/sudoers.d/        lets user nut run `upsmon -c fsd`
 etc/logrotate.d/      rotation for /var/log/ups-agent

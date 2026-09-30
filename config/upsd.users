@@ -2,3 +2,10 @@
 [upsmon]
     password = @UPSMON_PASSWORD@
     upsmon primary
+
+# Local admin for instant commands (battery self-test) and variable changes.
+# Password is kept in /etc/ups-agent/admin.pass (root only); use ups-selftest.
+[admin]
+    password = @ADMIN_PASSWORD@
+    actions = SET
+    instcmds = ALL

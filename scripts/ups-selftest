@@ -1,0 +1,61 @@
+#!/bin/bash
+# ups-agent: run the UPS's own battery self-test and report the result.
+#
+#   sudo ups-selftest          # quick test (~10 s on battery)
+#   sudo ups-selftest --deep   # deep test (runs the battery down further)
+#   sudo ups-selftest --yes    # skip the confirmation prompt
+#
+# WARNING: the test puts the connected load on battery. If the battery is bad
+# the outlets WILL drop, exactly as in a real outage with a bad battery. Run it
+# with only a lamp on the UPS, or when you are prepared for the machine to lose
+# power.
+set -u
+[ "$(id -u)" -eq 0 ] || { echo "run as root: sudo $0 $*" >&2; exit 1; }
+CONF=/etc/ups-agent/ups-agent.conf
+[ -r "$CONF" ] && . "$CONF"
+UPS=${UPS:-cyberpower@localhost}
+PASS_FILE=/etc/ups-agent/admin.pass
+cmd=test.battery.start.quick; yes=0
+for a in "$@"; do
+    case $a in
+        --deep) cmd=test.battery.start.deep ;;
+        --yes|-y) yes=1 ;;
+        *) echo "usage: $0 [--deep] [--yes]" >&2; exit 2 ;;
+    esac
+done
+[ -r "$PASS_FILE" ] || { echo "missing $PASS_FILE; re-run install.sh" >&2; exit 1; }
+pw=$(cat "$PASS_FILE")
+
+echo "UPS: $UPS"
+upsc "$UPS" 2>/dev/null | grep -E '^(ups\.status|battery\.charge|battery\.voltage|ups\.load|ups\.test\.result):' | sed 's/^/  before: /'
+if [ $yes -ne 1 ]; then
+    echo
+    echo "This puts the load on battery. If the battery is bad, the outlets will drop."
+    read -r -p "Continue with $cmd? [y/N] " ans
+    [[ $ans =~ ^[Yy] ]] || { echo "aborted"; exit 0; }
+fi
+
+if ! upscmd -u admin -p "$pw" "$UPS" "$cmd"; then
+    echo "upscmd failed (auth or unsupported command)" >&2; exit 1
+fi
+echo "test started; watching for up to 90 s..."
+last=""
+for _ in $(seq 1 45); do
+    sleep 2
+    res=$(upsc "$UPS" ups.test.result 2>/dev/null)
+    st=$(upsc "$UPS" ups.status 2>/dev/null)
+    if [ "$res|$st" != "$last" ]; then
+        echo "  $(date '+%H:%M:%S') status=\"$st\" test.result=\"$res\" charge=$(upsc "$UPS" battery.charge 2>/dev/null)% voltage=$(upsc "$UPS" battery.voltage 2>/dev/null)V"
+        last="$res|$st"
+    fi
+    case "$res" in
+        *[Pp]assed*|*[Ee]rror*|*[Ff]ail*|*[Aa]bort*) break ;;
+    esac
+done
+echo
+echo "final: test.result=\"$res\" status=\"$st\""
+case "$res" in
+    *[Pp]assed*) echo "RESULT: battery PASSED the self-test."; exit 0 ;;
+    *[Ee]rror*|*[Ff]ail*) echo "RESULT: battery FAILED. Replace it (CP1000AVRLCDa: 12V 9Ah, CyberPower RB1290)."; exit 3 ;;
+    *) echo "RESULT: inconclusive (UPS did not report a verdict). If the outlets dropped, the battery failed."; exit 4 ;;
+esac
