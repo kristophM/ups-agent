@@ -41,17 +41,22 @@ fi
 . "$ENV_FILE"
 : "${UPS_NAME:=cyberpower}" "${UPS_DESC:=CyberPower UPS}"
 : "${CHARGE_LOW:=40}" "${RUNTIME_LOW:=180}" "${ONBATT_SHUTDOWN_SECS:=300}"
-: "${OFFDELAY:=60}" "${ONDELAY:=120}" "${HEARTBEAT_MIN:=15}"
+: "${OFFDELAY:=60}" "${ONDELAY:=-1}" "${HEARTBEAT_MIN:=15}"
 
 [[ $UPS_NAME =~ ^[A-Za-z0-9_-]+$ ]] || { warn "UPS_NAME '$UPS_NAME' has invalid characters"; exit 1; }
-for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY ONDELAY HEARTBEAT_MIN; do
+for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY HEARTBEAT_MIN; do
     [[ ${!v} =~ ^[0-9]+$ ]] || { warn "$v must be a non-negative integer (got '${!v}')"; exit 1; }
 done
-if [ "$ONDELAY" -le "$OFFDELAY" ]; then
-    warn "ONDELAY ($ONDELAY) must be greater than OFFDELAY ($OFFDELAY)"; exit 1
+[[ $ONDELAY =~ ^(-1|[0-9]+)$ ]] || { warn "ONDELAY must be -1 (disabled) or a non-negative integer (got '$ONDELAY')"; exit 1; }
+if [ "$ONDELAY" -ge 0 ]; then
+    warn "ONDELAY=$ONDELAY: CyberPower units restart the outlets when this timer elapses EVEN IF POWER IS STILL OUT (reboot loop on battery). Use ONDELAY=-1 unless your UPS is known to honour it."
+    if [ "$ONDELAY" -le "$OFFDELAY" ]; then
+        warn "ONDELAY ($ONDELAY) must be greater than OFFDELAY ($OFFDELAY)"; exit 1
+    fi
+    [ $((ONDELAY % 60)) -ne 0 ] && warn "CyberPower rounds ONDELAY down to a multiple of 60 s"
 fi
-if [ $((OFFDELAY % 60)) -ne 0 ] || [ $((ONDELAY % 60)) -ne 0 ] || [ "$OFFDELAY" -lt 60 ]; then
-    warn "CyberPower rounds delays DOWN to multiples of 60 s; OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY may become 0 (no delay)"
+if [ $((OFFDELAY % 60)) -ne 0 ] || [ "$OFFDELAY" -lt 60 ]; then
+    warn "CyberPower rounds OFFDELAY DOWN to a multiple of 60 s; OFFDELAY=$OFFDELAY may become 0 (outlets cut immediately)"
 fi
 ok "UPS_NAME=$UPS_NAME CHARGE_LOW=${CHARGE_LOW}% RUNTIME_LOW=${RUNTIME_LOW}s ONBATT_SHUTDOWN_SECS=$ONBATT_SHUTDOWN_SECS OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY"
 

@@ -39,7 +39,7 @@ first run. Edit that file to change thresholds, then re-run `sudo ./install.sh`.
 | `RUNTIME_LOW` | `180` | ...or when estimated runtime is at or below this many seconds |
 | `ONBATT_SHUTDOWN_SECS` | `300` | Backstop: shut down after this many consecutive seconds on battery |
 | `OFFDELAY` | `60` | Seconds after the halt command until the UPS cuts its outlets (CyberPower rounds down to multiples of 60, so use 60, 120, ...) |
-| `ONDELAY` | `120` | Seconds until outlets come back if utility power is present (must exceed `OFFDELAY`, same rounding) |
+| `ONDELAY` | `-1` | Disabled. CyberPower units run this timer even while utility power is out and reboot the load on battery (verified on a CP1000AVRLCDa). Leave at -1 unless your UPS honours it |
 | `HEARTBEAT_MIN` | `15` | Minutes between status.log heartbeat lines while everything is normal |
 
 Pick `CHARGE_LOW`/`RUNTIME_LOW` so that the OS has time to halt with margin
@@ -75,16 +75,17 @@ Three NUT processes run on the machine (`MODE=standalone`):
 4. **UPS outlets off.** In the last step of the halt, systemd runs
    `/usr/lib/systemd/system-shutdown/nutshutdown` (shipped by `nut-client`).
    It sees the flag and runs `upsdrvctl shutdown`, which sends
-   `shutdown.return` to the UPS with `OFFDELAY`/`ONDELAY`. The UPS cuts its
-   outlets `OFFDELAY` seconds later, with charge still in the battery.
-5. **Utility power returns.** The UPS restores its outlets (immediately if
-   power is already back when `ONDELAY` expires, otherwise as soon as it
-   returns). The BIOS sees AC and boots the machine. NUT starts at boot, the
+   `shutdown.return` to the UPS with `OFFDELAY`. The UPS display counts down
+   and cuts its outlets, with charge still in the battery.
+5. **Utility power returns.** The UPS restores its outlets by itself. The
+   BIOS sees AC and boots the machine. NUT starts at boot, the
    `POWERDOWNFLAG` is cleared, and normal monitoring resumes.
 
-If utility power comes back between step 3 and step 4, the UPS still cycles
-its outlets (off after `OFFDELAY`, on after `ONDELAY`), so the machine reboots
-rather than being left halted with power available.
+`ONDELAY` is disabled (-1) on purpose. With a positive value, CyberPower units
+start that countdown immediately and switch the outlets back on when it
+expires even if utility power is still out, so the machine boots on battery,
+sees ON BATTERY again, shuts down again, and loops until the battery is flat.
+This was observed on a CP1000AVRLCDa with `ONDELAY=120`.
 
 ### Why the sudoers rule
 
@@ -198,6 +199,9 @@ with only a lamp on the UPS, or accept that the machine may lose power.
 - **Rig died instantly when the plug was pulled, UPS turned off too**: the
   battery did not take the load. See "Before relying on it" above. Nothing in
   the logs is expected in this case.
+- **Machine rebooted on battery after the shutdown, then shut down again**:
+  `ONDELAY` is positive. Set it to -1 and re-run the installer (see "How it
+  works").
 - **Machine did not power on when utility returned**: confirm BIOS
   *AC BACK = Always On*, and that the machine is on a battery-backed outlet.
 - **Stale `/etc/killpower` after a normal boot**: `sudo rm /etc/killpower`.
