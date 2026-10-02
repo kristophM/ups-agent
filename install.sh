@@ -41,7 +41,7 @@ fi
 . "$ENV_FILE"
 : "${UPS_NAME:=cyberpower}" "${UPS_DESC:=CyberPower UPS}"
 : "${CHARGE_LOW:=40}" "${RUNTIME_LOW:=180}" "${ONBATT_SHUTDOWN_SECS:=300}"
-: "${OFFDELAY:=60}" "${ONDELAY:=1800}" "${HEARTBEAT_MIN:=15}" "${BOOT_GRACE_SECS:=180}"
+: "${OFFDELAY:=60}" "${ONDELAY:=600}" "${HEARTBEAT_MIN:=15}" "${BOOT_GRACE_SECS:=180}"
 
 [[ $UPS_NAME =~ ^[A-Za-z0-9_-]+$ ]] || { warn "UPS_NAME '$UPS_NAME' has invalid characters"; exit 1; }
 for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY HEARTBEAT_MIN BOOT_GRACE_SECS; do

@@ -39,7 +39,7 @@ first run. Edit that file to change thresholds, then re-run `sudo ./install.sh`.
 | `RUNTIME_LOW` | `180` | ...or when estimated runtime is at or below this many seconds |
 | `ONBATT_SHUTDOWN_SECS` | `300` | Backstop: shut down after this many consecutive seconds on battery |
 | `OFFDELAY` | `60` | Seconds after the halt command until the UPS cuts its outlets (CyberPower rounds down to multiples of 60, so use 60, 120, ...) |
-| `ONDELAY` | `1800` | Seconds from the shutdown command until the UPS re-powers its outlets, power or no power. Acts as the retry interval during a long outage (see below). Multiple of 60, must exceed `OFFDELAY` |
+| `ONDELAY` | `600` | Seconds from the shutdown command until the UPS re-powers its outlets, power or no power. Acts as the retry interval during a long outage (see below). Multiple of 60, must exceed `OFFDELAY` |
 | `BOOT_GRACE_SECS` | `180` | If the machine boots and the UPS is still on battery within this many seconds, shut down again immediately (a retry into an ongoing outage) |
 | `HEARTBEAT_MIN` | `15` | Minutes between status.log heartbeat lines while everything is normal |
 
@@ -104,8 +104,16 @@ to set up power on delay", and the unit exposes no auto-restart setting over
 USB (`upsrw -l` lists only the two delay timers). So a plain "off until power
 returns" is not available, and the periodic retry above is the closest thing:
 the machine is back at most `ONDELAY` seconds after power returns, and a long
-outage costs a short boot every `ONDELAY` seconds. With the default 30 minutes
-and a light load that is a few percent of charge per retry.
+outage costs a short boot (about two minutes of outlets-on time) every
+`ONDELAY` seconds. With the default 10 minutes that drains the battery at
+roughly a fifth of the rate of simply staying on; if a very long outage does
+exhaust it, the UPS shuts itself off and restarts on its own when power
+returns (standard CyberPower behaviour), so the machine still comes back.
+
+`ONBATT_SHUTDOWN_SECS` and `ONDELAY` interact: an outage shorter than
+`ONBATT_SHUTDOWN_SECS` costs nothing, while a longer one costs a shutdown plus
+up to `ONDELAY` of downtime after power returns. With about an hour of runtime
+at light load, waiting 5 minutes on battery is cheap insurance against that.
 
 If your UPS honours "return only when power is back" properly, you can set a
 short `ONDELAY` (120) and `BOOT_GRACE_SECS=0`.
