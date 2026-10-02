@@ -202,8 +202,14 @@ path is handled by upsmon itself and is **not** affected.
    `ON BATTERY`, then `ON-BATTERY TIMER EXPIRED`, then shuts down. The UPS
    stays on; its display shows on-battery with a tiny load.
 4. Plug the UPS back in. The switch is already up (it was never on the UPS),
-   so to simulate the grid returning, power-cycle the switch, or send a magic
-   packet from another machine. The machine should boot.
+   so to simulate the grid returning, power-cycle the switch. Note that the
+   link-activity wake mode fires on the link going *down* as well as up: if
+   the switch is unplugged while the machine is already halted, the machine
+   wakes at once. For a faithful rehearsal unplug the switch first, then halt
+   the machine, then plug the switch back in; the machine should boot within
+   about a minute of the switch's lights returning (verified on the
+   CP1000AVRLCDa / X870I AORUS setup with ErP disabled; that board has no
+   separate Wake-on-LAN option).
 5. For the exhaustion path, leave the plug out overnight with the machine
    halted. In the morning the UPS should be dark; plug it in and the machine
    should boot by itself.
