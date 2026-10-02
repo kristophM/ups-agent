@@ -39,7 +39,8 @@ first run. Edit that file to change thresholds, then re-run `sudo ./install.sh`.
 | `RUNTIME_LOW` | `180` | ...or when estimated runtime is at or below this many seconds |
 | `ONBATT_SHUTDOWN_SECS` | `300` | Backstop: shut down after this many consecutive seconds on battery |
 | `OFFDELAY` | `60` | Seconds after the halt command until the UPS cuts its outlets (CyberPower rounds down to multiples of 60, so use 60, 120, ...) |
-| `ONDELAY` | `-1` | Disabled. CyberPower units run this timer even while utility power is out and reboot the load on battery (verified on a CP1000AVRLCDa). Leave at -1 unless your UPS honours it |
+| `ONDELAY` | `1800` | Seconds from the shutdown command until the UPS re-powers its outlets, power or no power. Acts as the retry interval during a long outage (see below). Multiple of 60, must exceed `OFFDELAY` |
+| `BOOT_GRACE_SECS` | `180` | If the machine boots and the UPS is still on battery within this many seconds, shut down again immediately (a retry into an ongoing outage) |
 | `HEARTBEAT_MIN` | `15` | Minutes between status.log heartbeat lines while everything is normal |
 
 Pick `CHARGE_LOW`/`RUNTIME_LOW` so that the OS has time to halt with margin
@@ -77,15 +78,37 @@ Three NUT processes run on the machine (`MODE=standalone`):
    It sees the flag and runs `upsdrvctl shutdown`, which sends
    `shutdown.return` to the UPS with `OFFDELAY`. The UPS display counts down
    and cuts its outlets, with charge still in the battery.
-5. **Utility power returns.** The UPS restores its outlets by itself. The
-   BIOS sees AC and boots the machine. NUT starts at boot, the
-   `POWERDOWNFLAG` is cleared, and normal monitoring resumes.
+5. **Outlets back on.** `ONDELAY` seconds after the shutdown command the UPS
+   re-powers its outlets, whether or not utility power is back. The BIOS
+   sees AC and boots the machine.
+   - If utility power is back: NUT starts, the `POWERDOWNFLAG` is cleared,
+     normal monitoring resumes. Done.
+   - If the outage is still going: upsmon sees ON BATTERY within seconds of
+     boot. Because the machine has been up for less than `BOOT_GRACE_SECS`,
+     the handler forces a shutdown immediately instead of waiting
+     `ONBATT_SHUTDOWN_SECS`. Steps 3 to 5 repeat every `ONDELAY` seconds,
+     each retry costing roughly two minutes on battery, until power returns
+     or the battery is exhausted.
 
-`ONDELAY` is disabled (-1) on purpose. With a positive value, CyberPower units
-start that countdown immediately and switch the outlets back on when it
-expires even if utility power is still out, so the machine boots on battery,
-sees ON BATTERY again, shuts down again, and loops until the battery is flat.
-This was observed on a CP1000AVRLCDa with `ONDELAY=120`.
+### Why the retry design (CyberPower behaviour)
+
+Tested on a CP1000AVRLCDa, firmware "CyberPower HID 0.84", NUT 2.8.4:
+
+| `ONDELAY` | What the UPS does after cutting the outlets |
+|---|---|
+| positive | Re-powers the outlets when the timer expires, **even with utility power still out** (the load boots on battery) |
+| `-1` | Never re-powers them, **not even when utility power returns**; someone must press the UPS button |
+
+CyberPower support, quoted in `man usbhid-ups`, says their units "are unable
+to set up power on delay", and the unit exposes no auto-restart setting over
+USB (`upsrw -l` lists only the two delay timers). So a plain "off until power
+returns" is not available, and the periodic retry above is the closest thing:
+the machine is back at most `ONDELAY` seconds after power returns, and a long
+outage costs a short boot every `ONDELAY` seconds. With the default 30 minutes
+and a light load that is a few percent of charge per retry.
+
+If your UPS honours "return only when power is back" properly, you can set a
+short `ONDELAY` (120) and `BOOT_GRACE_SECS=0`.
 
 ### Why the sudoers rule
 
@@ -200,8 +223,12 @@ with only a lamp on the UPS, or accept that the machine may lose power.
   battery did not take the load. See "Before relying on it" above. Nothing in
   the logs is expected in this case.
 - **Machine rebooted on battery after the shutdown, then shut down again**:
-  `ONDELAY` is positive. Set it to -1 and re-run the installer (see "How it
-  works").
+  that is the retry design working (see "Why the retry design"). The log line
+  reads `BOOTED INTO ONGOING OUTAGE`. Raise `ONDELAY` to retry less often.
+- **Machine stays off after power returns, UPS dark**: `ONDELAY` is -1 or the
+  UPS did not accept the timer (the installer warns if `ups.delay.start`
+  reads back differently). Press the UPS button, fix `ONDELAY`, re-run the
+  installer.
 - **Machine did not power on when utility returned**: confirm BIOS
   *AC BACK = Always On*, and that the machine is on a battery-backed outlet.
 - **Stale `/etc/killpower` after a normal boot**: `sudo rm /etc/killpower`.

@@ -28,9 +28,26 @@ log() {
     sync -f "$LOG" 2>/dev/null || sync
 }
 
+uptime_secs() { cut -d. -f1 /proc/uptime; }
+force_shutdown() {
+    if [ -e "$DRY_RUN_FLAG" ]; then
+        log crit "$1 (dry-run flag present, NOT shutting down). $(snapshot)"
+    else
+        log crit "$1: forcing shutdown via upsmon -c fsd. $(snapshot)"
+        if ! sudo -n /usr/sbin/upsmon -c fsd; then
+            log err "upsmon -c fsd FAILED (check /etc/sudoers.d/ups-agent)"
+        fi
+    fi
+}
+
 case "$event" in
     onbatt)
-        log warning "ON BATTERY: utility power lost. $(snapshot)"
+        up=$(uptime_secs)
+        if [ "${BOOT_GRACE_SECS:-0}" -gt 0 ] && [ "$up" -lt "$BOOT_GRACE_SECS" ]; then
+            force_shutdown "BOOTED INTO ONGOING OUTAGE (up ${up}s, UPS still on battery)"
+        else
+            log warning "ON BATTERY: utility power lost. $(snapshot)"
+        fi
         ;;
     online)
         log notice "ONLINE: utility power restored; shutdown timer cancelled. $(snapshot)"
@@ -39,14 +56,7 @@ case "$event" in
         log crit "LOW BATTERY threshold reached; upsmon will shut the OS down now. $(snapshot)"
         ;;
     onbatt-shutdown)
-        if [ -e "$DRY_RUN_FLAG" ]; then
-            log crit "ON-BATTERY TIMER EXPIRED (dry-run flag present, NOT shutting down). $(snapshot)"
-        else
-            log crit "ON-BATTERY TIMER EXPIRED: forcing shutdown via upsmon -c fsd. $(snapshot)"
-            if ! sudo -n /usr/sbin/upsmon -c fsd; then
-                log err "upsmon -c fsd FAILED (check /etc/sudoers.d/ups-agent)"
-            fi
-        fi
+        force_shutdown "ON-BATTERY TIMER EXPIRED"
         ;;
     fsd)
         log crit "FSD: forced shutdown signalled. $(snapshot)"

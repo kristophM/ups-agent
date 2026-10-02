@@ -41,24 +41,26 @@ fi
 . "$ENV_FILE"
 : "${UPS_NAME:=cyberpower}" "${UPS_DESC:=CyberPower UPS}"
 : "${CHARGE_LOW:=40}" "${RUNTIME_LOW:=180}" "${ONBATT_SHUTDOWN_SECS:=300}"
-: "${OFFDELAY:=60}" "${ONDELAY:=-1}" "${HEARTBEAT_MIN:=15}"
+: "${OFFDELAY:=60}" "${ONDELAY:=1800}" "${HEARTBEAT_MIN:=15}" "${BOOT_GRACE_SECS:=180}"
 
 [[ $UPS_NAME =~ ^[A-Za-z0-9_-]+$ ]] || { warn "UPS_NAME '$UPS_NAME' has invalid characters"; exit 1; }
-for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY HEARTBEAT_MIN; do
+for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY HEARTBEAT_MIN BOOT_GRACE_SECS; do
     [[ ${!v} =~ ^[0-9]+$ ]] || { warn "$v must be a non-negative integer (got '${!v}')"; exit 1; }
 done
 [[ $ONDELAY =~ ^(-1|[0-9]+)$ ]] || { warn "ONDELAY must be -1 (disabled) or a non-negative integer (got '$ONDELAY')"; exit 1; }
 if [ "$ONDELAY" -ge 0 ]; then
-    warn "ONDELAY=$ONDELAY: CyberPower units restart the outlets when this timer elapses EVEN IF POWER IS STILL OUT (reboot loop on battery). Use ONDELAY=-1 unless your UPS is known to honour it."
     if [ "$ONDELAY" -le "$OFFDELAY" ]; then
         warn "ONDELAY ($ONDELAY) must be greater than OFFDELAY ($OFFDELAY)"; exit 1
     fi
     [ $((ONDELAY % 60)) -ne 0 ] && warn "CyberPower rounds ONDELAY down to a multiple of 60 s"
+    [ "$ONDELAY" -lt 600 ] && warn "ONDELAY=$ONDELAY is short: during a long outage the machine will boot on battery every $ONDELAY s"
+else
+    warn "ONDELAY=-1: on CyberPower units the UPS will NOT restart by itself when power returns (manual button press needed)"
 fi
 if [ $((OFFDELAY % 60)) -ne 0 ] || [ "$OFFDELAY" -lt 60 ]; then
     warn "CyberPower rounds OFFDELAY DOWN to a multiple of 60 s; OFFDELAY=$OFFDELAY may become 0 (outlets cut immediately)"
 fi
-ok "UPS_NAME=$UPS_NAME CHARGE_LOW=${CHARGE_LOW}% RUNTIME_LOW=${RUNTIME_LOW}s ONBATT_SHUTDOWN_SECS=$ONBATT_SHUTDOWN_SECS OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY"
+ok "UPS_NAME=$UPS_NAME CHARGE_LOW=${CHARGE_LOW}% RUNTIME_LOW=${RUNTIME_LOW}s ONBATT_SHUTDOWN_SECS=$ONBATT_SHUTDOWN_SECS OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY BOOT_GRACE_SECS=$BOOT_GRACE_SECS"
 
 # ---------------------------------------------------------------- 2. packages
 log "Installing NUT packages"
@@ -158,6 +160,7 @@ cat > "$CONF_DIR/ups-agent.conf" <<CONF
 UPS=$UPS_NAME@localhost
 LOG_DIR=$LOG_DIR
 HEARTBEAT_MIN=$HEARTBEAT_MIN
+BOOT_GRACE_SECS=$BOOT_GRACE_SECS
 CONF
 chmod 0644 "$CONF_DIR/ups-agent.conf"
 
@@ -226,6 +229,10 @@ if upsc "$UPS_NAME@localhost" >/dev/null 2>&1; then
     upsc "$UPS_NAME@localhost" 2>/dev/null \
       | grep -E '^(ups\.status|battery\.charge|battery\.charge\.low|battery\.runtime|battery\.runtime\.low|ups\.delay\.shutdown|ups\.delay\.start|ups\.load|input\.voltage):' \
       | sed 's/^/         /'
+    got=$(upsc "$UPS_NAME@localhost" ups.delay.start 2>/dev/null)
+    if [ "$ONDELAY" -ge 0 ] && [ "$got" != "$ONDELAY" ]; then
+        warn "UPS reports ups.delay.start=$got, not $ONDELAY: it may have capped or rounded the restart timer"
+    fi
 else
     warn "upsc $UPS_NAME@localhost failed — check: journalctl -u nut-driver@$UPS_NAME -u nut-server"
 fi
