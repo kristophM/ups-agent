@@ -227,6 +227,8 @@ path is handled by upsmon itself and is **not** affected.
   a positive `ONDELAY`; that is the retry design. Set `UPS_POWEROFF=no`.
 - **Machine stays off after power returns, UPS dark**: `UPS_POWEROFF=yes` with
   `ONDELAY=-1`. Press the UPS button, set `UPS_POWEROFF=no`, re-run.
+- **upsmon logs "No POWERDOWNFLAG value was configured"** at startup: expected
+  with `UPS_POWEROFF=no`; it is the setting that keeps the UPS running.
 - **Stale `/etc/killpower` after a normal boot**: `sudo rm /etc/killpower`
   (the installer removes it when `UPS_POWEROFF=no`).
 - **Changing the upsmon or admin password**: delete `/etc/nut/upsd.users` and
