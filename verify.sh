@@ -27,9 +27,25 @@ else
     bad "upsc failed: $data"
 fi
 
-echo "== shutdown path"
-if upscmd -l "$UPS" 2>/dev/null | grep -q 'shutdown.return'; then ok "UPS supports shutdown.return (outlets off, back on when AC returns)"; else bad "UPS does not list shutdown.return"; fi
-if [ -x /usr/lib/systemd/system-shutdown/nutshutdown ] || [ -x /lib/systemd/system-shutdown/nutshutdown ]; then ok "nutshutdown halt hook present"; else bad "nutshutdown halt hook missing"; fi
+echo "== shutdown path (UPS_POWEROFF=${UPS_POWEROFF:-?})"
+if [ "${UPS_POWEROFF:-no}" = yes ]; then
+    if upscmd -l "$UPS" 2>/dev/null | grep -q 'shutdown.return'; then ok "UPS supports shutdown.return"; else bad "UPS does not list shutdown.return"; fi
+    if [ -x /usr/lib/systemd/system-shutdown/nutshutdown ] || [ -x /lib/systemd/system-shutdown/nutshutdown ]; then ok "nutshutdown halt hook present"; else bad "nutshutdown halt hook missing"; fi
+else
+    ok "UPS is left running after a halt (no POWERDOWNFLAG)"
+    echo "== wake-on-lan"
+    iface=${WOL_IFACE:-}
+    [ -z "$iface" ] && for i in /sys/class/net/en* /sys/class/net/eth*; do [ -e "$i/device" ] && { iface=$(basename "$i"); break; }; done
+    if [ -n "$iface" ]; then
+        link=$(cat /sys/class/net/$iface/operstate 2>/dev/null)
+        [ "$link" = up ] && ok "$iface link up ($(cat /sys/class/net/$iface/address))" || bad "$iface link is '$link' — Wake-on-LAN needs an Ethernet cable to the switch"
+        wol=$(sudo -n ethtool "$iface" 2>/dev/null | sed -n 's/^\s*Wake-on: //p')
+        if [ -n "$wol" ]; then [ "$wol" = "${WOL_MODES:-pg}" ] && ok "Wake-on: $wol" || bad "Wake-on: $wol (expected ${WOL_MODES:-pg}; check: journalctl -u ups-agent-wol)"; else ok "Wake-on modes: (need root to read: sudo ethtool $iface | grep Wake-on)"; fi
+        systemctl is-enabled --quiet ups-agent-wol.service && ok "ups-agent-wol.service enabled" || bad "ups-agent-wol.service not enabled"
+    else
+        bad "no wired interface found for Wake-on-LAN"
+    fi
+fi
 [ -f /etc/killpower ] && bad "/etc/killpower exists (stale POWERDOWNFLAG — remove it: sudo rm /etc/killpower)" || ok "no stale POWERDOWNFLAG"
 [ -e /etc/ups-agent/dry-run ] && bad "dry-run flag present: on-battery timer will NOT shut down" || ok "dry-run flag absent (timer shutdown armed)"
 [ -f /etc/sudoers.d/ups-agent ] && ok "sudoers rule for nut present" || bad "sudoers rule missing"

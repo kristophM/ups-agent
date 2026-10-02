@@ -1,0 +1,2 @@
+# ups-agent: arm Wake-on-LAN as soon as a wired interface appears.
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="en*|eth*", RUN+="/usr/local/lib/ups-agent/ups-agent-wol %k"

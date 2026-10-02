@@ -62,7 +62,11 @@ case "$event" in
         log crit "FSD: forced shutdown signalled. $(snapshot)"
         ;;
     shutdown)
-        log crit "SHUTDOWN: OS halting; UPS outlets will be cut after offdelay. $(snapshot)"
+        if [ "${UPS_POWEROFF:-no}" = yes ]; then
+            log crit "SHUTDOWN: OS halting; UPS outlets will be cut after offdelay. $(snapshot)"
+        else
+            log crit "SHUTDOWN: OS halting; UPS left running (wake by WoL or exhaustion restart). $(snapshot)"
+        fi
         ;;
     commbad|nocomm)
         log err "$event: lost communication with UPS (USB?)."

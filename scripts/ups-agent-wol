@@ -1,0 +1,22 @@
+#!/bin/bash
+# ups-agent: arm Wake-on-LAN on the wired interface. Run at boot
+# (ups-agent-wol.service), when the interface appears (udev) and after every
+# NetworkManager link-up (dispatcher), so the setting survives whatever the
+# network stack does. Optional arg: interface name.
+set -u
+CONF=/etc/ups-agent/ups-agent.conf
+[ -r "$CONF" ] && . "$CONF"
+iface=${1:-${WOL_IFACE:-}}
+modes=${WOL_MODES:-pg}
+if [ -z "$iface" ]; then
+    for i in /sys/class/net/en* /sys/class/net/eth*; do
+        [ -e "$i/device" ] && { iface=$(basename "$i"); break; }
+    done
+fi
+[ -n "$iface" ] || { echo "no wired interface found" >&2; exit 0; }
+if ethtool -s "$iface" wol "$modes" 2>/dev/null; then
+    now=$(ethtool "$iface" 2>/dev/null | sed -n 's/^\s*Wake-on: //p')
+    echo "$iface Wake-on=$now (requested $modes, mac $(cat /sys/class/net/$iface/address))"
+else
+    echo "failed to set wol $modes on $iface" >&2; exit 1
+fi

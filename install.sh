@@ -42,25 +42,34 @@ fi
 : "${UPS_NAME:=cyberpower}" "${UPS_DESC:=CyberPower UPS}"
 : "${CHARGE_LOW:=40}" "${RUNTIME_LOW:=180}" "${ONBATT_SHUTDOWN_SECS:=300}"
 : "${OFFDELAY:=60}" "${ONDELAY:=600}" "${HEARTBEAT_MIN:=15}" "${BOOT_GRACE_SECS:=180}"
+: "${UPS_POWEROFF:=no}" "${WOL_IFACE:=}" "${WOL_MODES:=pg}"
 
 [[ $UPS_NAME =~ ^[A-Za-z0-9_-]+$ ]] || { warn "UPS_NAME '$UPS_NAME' has invalid characters"; exit 1; }
 for v in CHARGE_LOW RUNTIME_LOW ONBATT_SHUTDOWN_SECS OFFDELAY HEARTBEAT_MIN BOOT_GRACE_SECS; do
     [[ ${!v} =~ ^[0-9]+$ ]] || { warn "$v must be a non-negative integer (got '${!v}')"; exit 1; }
 done
 [[ $ONDELAY =~ ^(-1|[0-9]+)$ ]] || { warn "ONDELAY must be -1 (disabled) or a non-negative integer (got '$ONDELAY')"; exit 1; }
-if [ "$ONDELAY" -ge 0 ]; then
+[[ $UPS_POWEROFF =~ ^(yes|no)$ ]] || { warn "UPS_POWEROFF must be yes or no (got '$UPS_POWEROFF')"; exit 1; }
+[[ $WOL_MODES =~ ^[pumbgsd]+$ ]] || { warn "WOL_MODES must be ethtool wol letters, e.g. pg (got '$WOL_MODES')"; exit 1; }
+if [ "$UPS_POWEROFF" = yes ] && [ "$ONDELAY" -ge 0 ]; then
     if [ "$ONDELAY" -le "$OFFDELAY" ]; then
         warn "ONDELAY ($ONDELAY) must be greater than OFFDELAY ($OFFDELAY)"; exit 1
     fi
     [ $((ONDELAY % 60)) -ne 0 ] && warn "CyberPower rounds ONDELAY down to a multiple of 60 s"
     [ "$ONDELAY" -lt 600 ] && warn "ONDELAY=$ONDELAY is short: during a long outage the machine will boot on battery every $ONDELAY s"
-else
+elif [ "$UPS_POWEROFF" = yes ]; then
     warn "ONDELAY=-1: on CyberPower units the UPS will NOT restart by itself when power returns (manual button press needed)"
 fi
-if [ $((OFFDELAY % 60)) -ne 0 ] || [ "$OFFDELAY" -lt 60 ]; then
+if [ "$UPS_POWEROFF" = yes ] && { [ $((OFFDELAY % 60)) -ne 0 ] || [ "$OFFDELAY" -lt 60 ]; }; then
     warn "CyberPower rounds OFFDELAY DOWN to a multiple of 60 s; OFFDELAY=$OFFDELAY may become 0 (outlets cut immediately)"
 fi
-ok "UPS_NAME=$UPS_NAME CHARGE_LOW=${CHARGE_LOW}% RUNTIME_LOW=${RUNTIME_LOW}s ONBATT_SHUTDOWN_SECS=$ONBATT_SHUTDOWN_SECS OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY BOOT_GRACE_SECS=$BOOT_GRACE_SECS"
+if [ "$UPS_POWEROFF" = yes ]; then
+    POWERDOWNFLAG_LINE="POWERDOWNFLAG /etc/killpower"
+else
+    POWERDOWNFLAG_LINE="# POWERDOWNFLAG not set: UPS_POWEROFF=no, the UPS is left running after the halt"
+fi
+ok "UPS_NAME=$UPS_NAME CHARGE_LOW=${CHARGE_LOW}% RUNTIME_LOW=${RUNTIME_LOW}s ONBATT_SHUTDOWN_SECS=$ONBATT_SHUTDOWN_SECS UPS_POWEROFF=$UPS_POWEROFF WOL_MODES=$WOL_MODES"
+[ "$UPS_POWEROFF" = yes ] && ok "OFFDELAY=$OFFDELAY ONDELAY=$ONDELAY BOOT_GRACE_SECS=$BOOT_GRACE_SECS"
 
 # ---------------------------------------------------------------- 2. packages
 log "Installing NUT packages"
@@ -126,6 +135,7 @@ render() {
         -e "s|@ONDELAY@|$ONDELAY|g" \
         -e "s|@UPSMON_PASSWORD@|$UPSMON_PASSWORD|g" \
         -e "s|@ADMIN_PASSWORD@|$ADMIN_PASSWORD|g" \
+        -e "s|@POWERDOWNFLAG_LINE@|$POWERDOWNFLAG_LINE|g" \
         "$REPO_DIR/config/$1"
 }
 install -d -m 0755 "$NUT_DIR"
@@ -151,6 +161,8 @@ install -d -m 0755 "$LIB_DIR"
 install -m 0755 "$REPO_DIR/scripts/upssched-cmd" "$LIB_DIR/upssched-cmd"
 install -m 0755 "$REPO_DIR/scripts/ups-agent-log" "$LIB_DIR/ups-agent-log"
 install -m 0755 "$REPO_DIR/scripts/ups-selftest" "$LIB_DIR/ups-selftest"
+install -m 0755 "$REPO_DIR/scripts/ups-agent-wol" "$LIB_DIR/ups-agent-wol"
+install -m 0755 "$REPO_DIR/scripts/wake" "$LIB_DIR/wake"
 ln -sf "$LIB_DIR/ups-selftest" /usr/local/sbin/ups-selftest
 printf '%s\n' "$ADMIN_PASSWORD" > "$CONF_DIR/admin.pass.tmp"
 install -m 0600 -o root -g root "$CONF_DIR/admin.pass.tmp" "$CONF_DIR/admin.pass"; rm -f "$CONF_DIR/admin.pass.tmp"
@@ -161,6 +173,9 @@ UPS=$UPS_NAME@localhost
 LOG_DIR=$LOG_DIR
 HEARTBEAT_MIN=$HEARTBEAT_MIN
 BOOT_GRACE_SECS=$BOOT_GRACE_SECS
+UPS_POWEROFF=$UPS_POWEROFF
+WOL_IFACE=$WOL_IFACE
+WOL_MODES=$WOL_MODES
 CONF
 chmod 0644 "$CONF_DIR/ups-agent.conf"
 
@@ -180,6 +195,15 @@ fi
 install -m 0644 "$REPO_DIR/etc/logrotate.d/ups-agent" /etc/logrotate.d/ups-agent
 install -m 0644 "$REPO_DIR/systemd/ups-agent-log.service" /etc/systemd/system/ups-agent-log.service
 install -m 0644 "$REPO_DIR/systemd/ups-agent-log.timer" /etc/systemd/system/ups-agent-log.timer
+install -m 0644 "$REPO_DIR/systemd/ups-agent-wol.service" /etc/systemd/system/ups-agent-wol.service
+install -m 0644 "$REPO_DIR/etc/udev/rules.d/80-ups-agent-wol.rules" /etc/udev/rules.d/80-ups-agent-wol.rules
+if [ -d /etc/NetworkManager/dispatcher.d ]; then
+    install -m 0755 "$REPO_DIR/etc/NetworkManager/dispatcher.d/90-ups-agent-wol" /etc/NetworkManager/dispatcher.d/90-ups-agent-wol
+fi
+udevadm control --reload-rules
+# A stale flag from an earlier UPS_POWEROFF=yes install would make the next
+# clean reboot cut the UPS outlets.
+[ "$UPS_POWEROFF" = no ] && rm -f /etc/killpower
 
 # upssched's pipe/lock live in /run/nut/upssched, created by NUT's own
 # tmpfiles rule (nut-common-tmpfiles.conf) and by the unit's ExecStartPre.
@@ -217,6 +241,12 @@ restart_unit nut-server.service
 sleep 2
 restart_unit nut-monitor.service
 systemctl enable --now ups-agent-log.timer >/dev/null && ok "ups-agent-log.timer enabled"
+systemctl enable ups-agent-wol.service >/dev/null 2>&1
+if systemctl restart ups-agent-wol.service; then
+    ok "Wake-on-LAN: $(journalctl -u ups-agent-wol -n 1 -o cat --no-pager 2>/dev/null)"
+else
+    warn "ups-agent-wol failed — see: journalctl -u ups-agent-wol"
+fi
 
 # ---------------------------------------------------------------- 7. summary
 log "Status"
@@ -237,10 +267,14 @@ else
     warn "upsc $UPS_NAME@localhost failed — check: journalctl -u nut-driver@$UPS_NAME -u nut-server"
 fi
 
-if [ -x /usr/lib/systemd/system-shutdown/nutshutdown ] || [ -x /lib/systemd/system-shutdown/nutshutdown ]; then
-    ok "nutshutdown hook present (UPS outlets will be cut at halt when POWERDOWNFLAG is set)"
+if [ "$UPS_POWEROFF" = yes ]; then
+    if [ -x /usr/lib/systemd/system-shutdown/nutshutdown ] || [ -x /lib/systemd/system-shutdown/nutshutdown ]; then
+        ok "nutshutdown hook present (UPS outlets will be cut at halt)"
+    else
+        warn "no systemd-shutdown nutshutdown hook found — the UPS will NOT cut power after halt. See README."
+    fi
 else
-    warn "no systemd-shutdown nutshutdown hook found — the UPS will NOT cut power after halt. See README."
+    ok "UPS_POWEROFF=no: the UPS is left running after a halt; wake-up relies on Wake-on-LAN or UPS exhaustion restart"
 fi
 
 echo

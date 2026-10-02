@@ -5,12 +5,12 @@
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "run as root: sudo $0" >&2; exit 1; }
 
-systemctl disable --now ups-agent-log.timer 2>/dev/null || true
+systemctl disable --now ups-agent-log.timer ups-agent-wol.service 2>/dev/null || true
 systemctl disable --now nut-monitor.service nut-server.service 2>/dev/null || true
 for u in $(systemctl list-units --all --plain --no-legend 'nut-driver@*' | awk '{print $1}'); do
     systemctl disable --now "$u" 2>/dev/null || true
 done
-rm -f /etc/systemd/system/ups-agent-log.service /etc/systemd/system/ups-agent-log.timer
+rm -f /etc/systemd/system/ups-agent-log.service /etc/systemd/system/ups-agent-log.timer /etc/systemd/system/ups-agent-wol.service /etc/udev/rules.d/80-ups-agent-wol.rules /etc/NetworkManager/dispatcher.d/90-ups-agent-wol
 rm -f /etc/sudoers.d/ups-agent /etc/logrotate.d/ups-agent /usr/lib/tmpfiles.d/ups-agent.conf
 rm -rf /usr/local/lib/ups-agent /etc/ups-agent /usr/local/sbin/ups-selftest
 for f in nut.conf ups.conf upsd.conf upsd.users upsmon.conf upssched.conf; do

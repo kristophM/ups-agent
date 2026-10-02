@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""Send a Wake-on-LAN magic packet. Works from any machine with python3 on the
+same LAN as the target (broadcast), no extra packages.
+
+    ./wake 30:56:0f:47:29:d7
+    ./wake 30:56:0f:47:29:d7 192.168.1.255   # explicit broadcast address
+"""
+import socket, sys
+if len(sys.argv) < 2:
+    sys.exit(__doc__)
+mac = bytes.fromhex(sys.argv[1].replace(":", "").replace("-", ""))
+if len(mac) != 6:
+    sys.exit("bad MAC address")
+bcast = sys.argv[2] if len(sys.argv) > 2 else "255.255.255.255"
+pkt = b"\xff" * 6 + mac * 16
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+for port in (9, 7):
+    s.sendto(pkt, (bcast, port))
+print(f"magic packet sent to {sys.argv[1]} via {bcast}")

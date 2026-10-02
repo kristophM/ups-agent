@@ -1,0 +1,14 @@
+[Unit]
+Description=ups-agent: arm Wake-on-LAN on the wired interface
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/ups-agent/ups-agent-wol
+# Re-arm on the way down too, right before the NIC driver saves its state.
+ExecStop=/usr/local/lib/ups-agent/ups-agent-wol
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+#!/bin/bash
+# ups-agent: NetworkManager may rewrite the NIC's wake-on-lan setting when it
+# activates a connection; re-arm ours afterwards.
+case "$2" in
+    up|connectivity-change) [ -n "${1:-}" ] && [[ $1 == en* || $1 == eth* ]] && /usr/local/lib/ups-agent/ups-agent-wol "$1" ;;
+esac
+exit 0
