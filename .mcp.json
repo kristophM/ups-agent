@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "notion": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "set -a; . ./.env; set +a; exec npx -y @notionhq/notion-mcp-server"
+      ]
+    }
+  }
+}
